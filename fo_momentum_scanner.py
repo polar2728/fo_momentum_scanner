@@ -10,7 +10,7 @@ Run after market close for fresh data.
 """
 
 import time
-import datetime
+from datetime import date, timedelta
 import zipfile
 import io
 import requests
@@ -133,7 +133,7 @@ def fetch_ban_list():
     except Exception:
         print("⚠️ Ban list unavailable")
         return set()
-        
+
 def download_fo():
     s = get_nse_session()
     for i in range(7):
