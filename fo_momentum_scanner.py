@@ -107,79 +107,70 @@ for key, default in {
 # ─────────────────────────────────────────────
 # FETCH EXACT NSE F&O SYMBOLS FROM BHAVCOPY ZIP
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# NSE HELPERS (aligned with your working standalone script)
+# ─────────────────────────────────────────────
 def get_nse_session():
     s = requests.Session()
-    s.headers.update({"User-Agent": "Mozilla/5.0", "Referer": "https://www.nseindia.com"})
+    s.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.nseindia.com/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    })
+    # Critical priming step
     try:
-        s.get("https://www.nseindia.com", timeout=5)
-    except:
-        pass
+        s.get("https://www.nseindia.com", timeout=8)
+        st.toast("NSE session primed (homepage visited)")
+    except Exception as e:
+        st.toast(f"Priming failed: {str(e)[:60]}...")
     return s
-
-def fetch_ban_list():
-    url = "https://nsearchives.nseindia.com/content/fo/fo_secban.csv"
-    try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        if r.status_code != 200:
-            return set()
-        text = r.text.strip()
-        if "Securities in Ban" not in text:
-            return set()
-        header = text.splitlines()[0]
-        ban_part = header.split(":", 1)[1].strip() if ':' in header else ""
-        banned = set()
-        for item in ban_part.split():
-            if ',' in item:
-                sym = item.split(",", 1)[1].strip().upper()
-                if sym.isalpha():
-                    banned.add(sym)
-        print(f"🚫 Banned symbols: {len(banned)}")
-        return banned
-    except Exception:
-        print("⚠️ Ban list unavailable")
-        return set()
 
 def download_fo():
     s = get_nse_session()
-    for i in range(7):
-        d = date.today() - timedelta(days=i)
+    today = date.today()
+    for i in range(10):  # wider window for safety
+        d = today - timedelta(days=i)
         url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{d.strftime('%Y%m%d')}_F_0000.csv.zip"
         try:
-            r = s.get(url, timeout=10)
+            st.toast(f"Trying bhavcopy for {d.strftime('%d-%b-%Y')}...")
+            r = s.get(url, timeout=12)
+            st.toast(f"Status: {r.status_code}")
             if r.status_code == 200:
-                with zipfile.ZipFile(BytesIO(r.content)) as z:
-                    print(f"✅ F&O bhavcopy loaded for {d}")
-                    return pd.read_csv(z.open(z.namelist()[0]))
-        except Exception:
+                with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+                    csv_name = z.namelist()[0]
+                    st.toast(f"Success → extracting {csv_name}")
+                    return pd.read_csv(z.open(csv_name))
+        except Exception as e:
+            st.toast(f"Failed for {d}: {str(e)[:60]}...")
             continue
-    print("⚠️ No F&O bhavcopy found")
+    st.warning("⚠️ No recent F&O bhavcopy could be downloaded. Using fallback universe.")
     return pd.DataFrame()
 
-# ==========================================================
-# BUILD TICKER UNIVERSE
-# ==========================================================
-def build_ticker_universe():
-    print("⏳ Building ticker universe...")
-    if not USE_ALL_FNO:
-        tickers = sorted(set(CORE_TICKERS))
-    else:
-        fo = download_fo()
-        if fo.empty or "FinInstrmTp" not in fo.columns or "TckrSymb" not in fo.columns:
-            print("⚠️ Fallback to core tickers")
-            tickers = sorted(set(CORE_TICKERS))
-        else:
-            banned = fetch_ban_list()
-            stocks = fo[fo["FinInstrmTp"] == "STF"]["TckrSymb"].str.upper().unique()
-            valid = set(stocks) - banned
-            tickers = sorted(valid | INDEX_SYMBOLS)
-            print(f"✅ Loaded {len(tickers)} F&O symbols")
-    symbol_map = {
-        t: "^NSEI" if t == "NIFTY" else "^NSEBANK" if t == "BANKNIFTY" else f"{t}.NS"
-        for t in tickers
-    }
-    return symbol_map
+# ─────────────────────────────────────────────
+# BUILD UNIVERSE (using the same logic as your standalone)
+# ─────────────────────────────────────────────
+@st.cache_data(ttl=3600 * 4, show_spinner=False)  # shorter cache to allow quick retries
+def get_fo_symbols():
+    fo_df = download_fo()
+    if fo_df.empty:
+        st.warning("Fallback to core + common F&O symbols (~50).")
+        return sorted(set(CORE_TICKERS + [
+            "HAL", "BEL", "SAIL", "IRFC", "PFC", "RECLTD", "ZOMATO", "ADANIENT",
+            "TRENT", "SHRIRAMFIN", "TATATECH", "KALYANKJIL"
+        ]))
 
-ALL_FO_SYMBOLS = build_ticker_universe()
+    # Extract unique stock symbols (STF = Stock Futures)
+    if "FinInstrmTp" in fo_df.columns and "TckrSymb" in fo_df.columns:
+        stocks = fo_df[fo_df["FinInstrmTp"] == "STF"]["TckrSymb"].str.upper().unique()
+        valid = set(stocks)
+        # Optional: exclude banned (your fetch_ban_list logic can be added here)
+        return sorted(list(valid))
+    else:
+        st.warning("Bhavcopy loaded but columns missing. Using fallback.")
+        return sorted(set(CORE_TICKERS))
+
+ALL_FO_SYMBOLS = list(get_fo_symbols().keys()) if isinstance(get_fo_symbols(), dict) else get_fo_symbols()
 
 def to_yf(sym: str) -> str:
     return sym + ".NS"
