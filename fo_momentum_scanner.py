@@ -8,7 +8,6 @@ Filters:
   1. Price > 200 DMA
   2. 1-month return > 6-month return  (momentum acceleration)
   3. OBV rising over last 5 sessions + Price above previous close
-     (On-Balance Volume = best free proxy for institutional accumulation / rising OI)
   4. RSI(14) between 55 and 70
   5. Volume > 1.5× 20-day average on the latest session
 
@@ -38,7 +37,7 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-#  CSS
+#  CSS (unchanged — looks good)
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -105,63 +104,63 @@ for key, default in {
         st.session_state[key] = default
 
 # ─────────────────────────────────────────────
-#  NSE F&O SYMBOL LISTS
+#  NSE F&O SYMBOL LISTS — Updated Feb 2026
 # ─────────────────────────────────────────────
 NIFTY50 = [
-    "RELIANCE","TCS","HDFCBANK","ICICIBANK","INFY","SBIN","HINDUNILVR","ITC",
-    "KOTAKBANK","LT","AXISBANK","BAJFINANCE","BHARTIARTL","ASIANPAINT","MARUTI",
-    "SUNPHARMA","TITAN","WIPRO","ULTRACEMCO","NESTLEIND","TECHM","HCLTECH",
-    "TATAMOTORS","M&M","POWERGRID","NTPC","TATASTEEL","JSWSTEEL","BAJAJFINSV",
-    "COALINDIA","ADANIPORTS","HINDALCO","ONGC","DIVISLAB","DRREDDY","CIPLA",
-    "EICHERMOT","BAJAJ-AUTO","HEROMOTOCO","BRITANNIA","GRASIM","INDUSINDBK",
-    "BPCL","IOC","SBILIFE","HDFCLIFE","APOLLOHOSP","TRENT","ADANIENT","SHRIRAMFIN",
+    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "SBIN", "HINDUNILVR", "ITC",
+    "KOTAKBANK", "LT", "AXISBANK", "BAJFINANCE", "BHARTIARTL", "ASIANPAINT", "MARUTI",
+    "SUNPHARMA", "TITAN", "WIPRO", "ULTRACEMCO", "NESTLEIND", "TECHM", "HCLTECH",
+    "TATAMOTORS", "M&M", "POWERGRID", "NTPC", "TATASTEEL", "JSWSTEEL", "BAJAJFINSV",
+    "COALINDIA", "ADANIPORTS", "HINDALCO", "ONGC", "DIVISLAB", "DRREDDY", "CIPLA",
+    "EICHERMOT", "BAJAJ-AUTO", "HEROMOTOCO", "BRITANNIA", "GRASIM", "INDUSINDBK",
+    "BPCL", "IOC", "SBILIFE", "HDFCLIFE", "APOLLOHOSP", "TRENT", "ADANIENT", "SHRIRAMFIN",
 ]
 
 NIFTY100_FO = NIFTY50 + [
-    "HAL","BEL","BHEL","SAIL","NMDC","VEDL","FORTIS","MAXHEALTH",
-    "ZOMATO","IRCTC","DMART","JUBLFOOD","BATAINDIA","PAGEIND",
-    "ABCAPITAL","SBICARD","PNB","BANKBARODA","CANBK","UNIONBANK",
-    "FEDERALBNK","IDFCFIRSTB","RECLTD","PFC","IRFC",
-    "MOTHERSON","BALKRISIND","MRF","APOLLOTYRE","CEAT",
-    "PIDILITIND","BERGEPAINT","HAVELLS","VOLTAS",
-    "LUPIN","TORNTPHARM","AUROPHARMA","BIOCON","GLENMARK",
-    "ICICIPRULI","MANAPPURAM","CHOLAFIN","MUTHOOTFIN","LICHSGFIN",
-    "NAUKRI","TATACOMM","LTIM","MPHASIS","COFORGE","PERSISTENT",
-    "ATGL","GAIL","INDIGO","AMBUJACEM","ACC",
-    "DABUR","MARICO","COLPAL","GODREJCP",
-    "PHOENIXLTD","PRESTIGE","LODHA","OBEROIRLTY","DLF","GODREJPROP",
-    "POLYCAB","SIEMENS","ABB","CONCOR","GMRINFRA",
+    "HAL", "BEL", "BHEL", "SAIL", "NMDC", "VEDL", "FORTIS", "MAXHEALTH",
+    "ZOMATO", "IRCTC", "DMART", "JUBLFOOD", "BATAINDIA", "PAGEIND",
+    "ABCAPITAL", "SBICARD", "PNB", "BANKBARODA", "CANBK", "UNIONBANK",
+    "FEDERALBNK", "IDFCFIRSTB", "RECLTD", "PFC", "IRFC",
+    "MOTHERSON", "BALKRISIND", "MRF", "APOLLOTYRE", "CEAT",
+    "PIDILITIND", "BERGEPAINT", "HAVELLS", "VOLTAS",
+    "LUPIN", "TORNTPHARM", "AUROPHARMA", "BIOCON", "GLENMARK",
+    "ICICIPRULI", "MANAPPURAM", "CHOLAFIN", "MUTHOOTFIN", "LICHSGFIN",
+    "NAUKRI", "TATACOMM", "LTIM", "MPHASIS", "COFORGE", "PERSISTENT",
+    "ATGL", "GAIL", "INDIGO", "AMBUJACEM", "ACC",
+    "DABUR", "MARICO", "COLPAL", "GODREJCP",
+    "PHOENIXLTD", "PRESTIGE", "LODHA", "OBEROIRLTY", "DLF", "GODREJPROP",
+    "POLYCAB", "SIEMENS", "ABB", "CONCOR", "GMRINFRA",
+    "SAMMAANCAP",  # Added — frequently in ban & F&O in 2026
 ]
 
 ALL_FO_SYMBOLS = list(dict.fromkeys(NIFTY100_FO + [
-    "AARTIIND","ALKEM","AMBER","ANGELONE","ASTRAL","AUBANK",
-    "BANDHANBNK","BAYERCROP","CANFINHOME","CDSL","CROMPTON","CYIENT",
-    "DEEPAKNTR","DELHIVERY","DEVYANI","EASEMYTRIP","ESCORTS","EXIDEIND",
-    "FINEORG","GNFC","HAPPSTMNDS","HFCL","HONAUT","IEX","IGL",
-    "INDHOTEL","INTELLECT","IPCALAB","ISEC","JBCHEPHARM","JKCEMENT",
-    "JKTYRE","JUSTDIAL","KAJARIACER","KEC","KFINTECH","KRBL",
-    "LATENTVIEW","LAXMIMACH","LEMONTREE","LUXIND","MCX","METROPOLIS",
-    "MINDTREE","MOIL","NATCOPHARM","NAVINFLUOR","NILKAMAL","OFSS",
-    "PNBHOUSING","POLYPLEX","PRAJIND","PRINCEPIPE","QUESS","RADICO",
-    "RBLBANK","REDINGTON","RELAXO","ROUTE","SCHAEFFLER","SJVN",
-    "SKFINDIA","SOBHA","SOLARINDS","SONACOMS","STLTECH","SUDARSCHEM",
-    "SUMICHEM","SUNDRMFAST","SUPREMEIND","SWSOLAR","TANLA","TATACHEM",
-    "TATAELXSI","TATAPOWER","TV18BRDCST","UCOBANK","UPL",
-    "VINATIORGA","WELCORP","WESTLIFE","WHIRLPOOL","ZEEL",
-    "ZENSARTECH","ZYDUSLIFE",
+    "AARTIIND", "ALKEM", "AMBER", "ANGELONE", "ASTRAL", "AUBANK",
+    "BANDHANBNK", "BAYERCROP", "CANFINHOME", "CDSL", "CROMPTON", "CYIENT",
+    "DEEPAKNTR", "DELHIVERY", "DEVYANI", "EASEMYTRIP", "ESCORTS", "EXIDEIND",
+    "FINEORG", "GNFC", "HAPPSTMNDS", "HFCL", "HONAUT", "IEX", "IGL",
+    "INDHOTEL", "INTELLECT", "IPCALAB", "ISEC", "JBCHEPHARM", "JKCEMENT",
+    "JKTYRE", "JUSTDIAL", "KAJARIACER", "KEC", "KFINTECH", "KRBL",
+    "LATENTVIEW", "LAXMIMACH", "LEMONTREE", "LUXIND", "MCX", "METROPOLIS",
+    "MINDTREE", "MOIL", "NATCOPHARM", "NAVINFLUOR", "NILKAMAL", "OFSS",
+    "PNBHOUSING", "POLYPLEX", "PRAJIND", "PRINCEPIPE", "QUESS", "RADICO",
+    "RBLBANK", "REDINGTON", "RELAXO", "ROUTE", "SCHAEFFLER", "SJVN",
+    "SKFINDIA", "SOBHA", "SOLARINDS", "SONACOMS", "STLTECH", "SUDARSCHEM",
+    "SUMICHEM", "SUNDRMFAST", "SUPREMEIND", "SWSOLAR", "TANLA", "TATACHEM",
+    "TATAELXSI", "TATAPOWER", "TV18BRDCST", "UCOBANK", "UPL",
+    "VINATIORGA", "WELCORP", "WESTLIFE", "WHIRLPOOL", "ZEEL",
+    "ZENSARTECH", "ZYDUSLIFE", "TATATECH",  # Recent addition in many lists
+    "KALYANKJIL",  # Appears in recent ban/MWPL discussions
 ]))
-
 
 def to_yf(sym: str) -> str:
     return sym + ".NS"
 
 
 # ─────────────────────────────────────────────
-#  DATA FETCH — cached per session
+#  DATA FETCH — longer cache since EOD
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600 * 6, show_spinner=False)  # 6 hours — good for after close
 def fetch_ohlcv(symbol: str) -> pd.DataFrame:
-    """Fetch ~14 months of daily OHLCV so we have enough history for all indicators."""
     ticker = yf.Ticker(to_yf(symbol))
     df = ticker.history(period="14mo", auto_adjust=True)
     if df.empty:
@@ -175,20 +174,17 @@ def fetch_ohlcv(symbol: str) -> pd.DataFrame:
 #  INDICATORS
 # ─────────────────────────────────────────────
 def compute_rsi(close: pd.Series, period: int = 14) -> float:
-    val = ta.momentum.RSIIndicator(close, window=period).rsi().iloc[-1]
-    return round(float(val), 2)
+    rsi_series = ta.momentum.RSIIndicator(close, window=period).rsi()
+    if pd.isna(rsi_series.iloc[-1]):
+        return np.nan
+    return round(float(rsi_series.iloc[-1]), 2)
 
 
 def compute_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
-    """On-Balance Volume — cumulative sum of volume signed by price direction."""
     return ta.volume.OnBalanceVolumeIndicator(close, volume).on_balance_volume()
 
 
 def obv_trending_up(obv: pd.Series, lookback: int = 5) -> bool:
-    """
-    Returns True if OBV has been making higher highs over the last `lookback` sessions.
-    We use a simple linear regression slope — positive slope = accumulation.
-    """
     recent = obv.iloc[-lookback:].values.astype(float)
     if len(recent) < lookback:
         return False
@@ -204,19 +200,19 @@ def scan_single(symbol: str, rsi_low: float, rsi_high: float,
                 vol_mult: float, obv_lookback: int):
     try:
         df = fetch_ohlcv(symbol)
-        if df.empty or len(df) < 210:   # need 200 sessions for DMA
+        if df.empty or len(df) < 210:
             return None
 
         close  = df["Close"]
         volume = df["Volume"]
         latest = float(close.iloc[-1])
 
-        # ── Filter 1: Price > 200 DMA ─────────────────────────────
+        # Filter 1: Price > 200 DMA
         ma200 = float(close.rolling(200).mean().iloc[-1])
         if pd.isna(ma200) or latest <= ma200:
             return None
 
-        # ── Filter 2: 1-month return > 6-month return ─────────────
+        # Filter 2: 1M > 6M return
         if len(close) < 130:
             return None
         ret_1m = (latest / float(close.iloc[-22]) - 1) * 100
@@ -224,31 +220,30 @@ def scan_single(symbol: str, rsi_low: float, rsi_high: float,
         if ret_1m <= ret_6m:
             return None
 
-        # ── Filter 3: OBV rising (positive slope) + Price > prev close ──
+        # Filter 3: OBV rising + price up
         obv    = compute_obv(close, volume)
         rising = obv_trending_up(obv, lookback=obv_lookback)
         price_up = float(close.iloc[-1]) > float(close.iloc[-2])
         if not (rising and price_up):
             return None
 
-        # ── Filter 4: RSI between rsi_low and rsi_high ────────────
+        # Filter 4: RSI range
         rsi = compute_rsi(close)
-        if not (rsi_low <= rsi <= rsi_high):
+        if pd.isna(rsi) or not (rsi_low <= rsi <= rsi_high):
             return None
 
-        # ── Filter 5: Volume > multiplier × 20-day average ────────
+        # Filter 5: Volume spike
         vol_20avg  = float(volume.iloc[-21:-1].mean())
         latest_vol = float(volume.iloc[-1])
         vol_ratio  = round(latest_vol / vol_20avg, 2) if vol_20avg > 0 else 0.0
         if vol_ratio < vol_mult:
             return None
 
-        # ── All 5 filters passed ──────────────────────────────────
+        # Passed — collect stats
         ma20   = float(close.rolling(20).mean().iloc[-1])
         ma50   = float(close.rolling(50).mean().iloc[-1])
         hi_52w = float(close.rolling(252).max().iloc[-1])
 
-        # OBV slope magnitude (normalised to price for readability)
         obv_recent = obv.iloc[-obv_lookback:].values.astype(float)
         x          = np.arange(len(obv_recent))
         obv_slope  = round(float(np.polyfit(x, obv_recent, 1)[0]), 0)
@@ -291,7 +286,7 @@ def run_scan(symbols, rsi_low, rsi_high, vol_mult, obv_lookback, progress_cb=Non
         else:
             results.append(out)
 
-        time.sleep(0.12)
+        time.sleep(0.08)  # lighter delay — yfinance usually handles it
 
     if not results:
         return pd.DataFrame(), errors
@@ -363,10 +358,9 @@ def render_sidebar():
     <div style='font-size:0.75rem; color:#475569; line-height:1.7'>
     <b>ℹ️ Why OBV?</b><br>
     On-Balance Volume accumulates volume on up-days and subtracts it on down-days.
-    A rising OBV slope means institutions are consistently buying — the same signal
-    that rising Open Interest gives in F&O.<br><br>
-    No bhav copy, no login, no external files needed — computed entirely from
-    yfinance OHLCV data.
+    A rising OBV slope means institutions are consistently buying — proxy for rising OI.
+    <br><br>
+    No bhav copy needed — all from yfinance.
     </div>
     """, unsafe_allow_html=True)
 
@@ -380,23 +374,20 @@ def main():
     st.markdown("""
     <div class="header-bar">
       <h1>📈 F&amp;O Momentum Scanner — 5-Filter System</h1>
-      <p>Long bias · NSE Futures · yfinance · No login · No downloads · Run after market close</p>
+      <p>Long bias · NSE Futures · yfinance · No login · Run after market close (updated Feb 2026)</p>
     </div>
     """, unsafe_allow_html=True)
 
     rsi_range, vol_mult, obv_lookback, universe, custom_syms = render_sidebar()
 
-    # OBV explanation banner
     st.markdown("""
     <div class="obv-note">
-      <b>Filter ③ — OBV (On-Balance Volume):</b>
-      OBV = cumulative sum of volume on up-days minus volume on down-days.
-      A positive slope over the last N sessions = institutions are accumulating = equivalent to rising Open Interest.
-      Computed entirely from daily price/volume data — no bhav copy, no external files required.
+      <b>Filter ③ — OBV (On-Balance Volume):</b><br>
+      Rising OBV slope = institutional accumulation (proxy for rising OI in F&O).<br>
+      Fully computed from price + volume — no external files.
     </div>
     """, unsafe_allow_html=True)
 
-    # Top metric tiles
     c1, c2, c3, c4 = st.columns(4)
     n_res = len(st.session_state.scan_results) if st.session_state.scan_results is not None else "—"
     ts    = st.session_state.last_scan_time
@@ -410,11 +401,11 @@ def main():
     universe_map = {
         "Nifty 50":                    NIFTY50,
         "Nifty 100 F&O":               NIFTY100_FO,
-        "Full F&O List (~200 stocks)":  ALL_FO_SYMBOLS,
+        "Full F&O List (~200 stocks)": ALL_FO_SYMBOLS,
         "Custom List":                 custom_syms,
     }
     symbols   = universe_map.get(universe, NIFTY100_FO)
-    est_secs  = round(len(symbols) * 0.15)
+    est_secs  = round(len(symbols) * 0.12)
     est_label = f"~{est_secs}s" if est_secs < 60 else f"~{est_secs//60}m {est_secs%60}s"
 
     col_btn, col_info = st.columns([2, 5])
@@ -425,18 +416,17 @@ def main():
     with col_info:
         st.markdown(f"""
         <p style='color:#64748b; font-size:0.85rem; margin-top:10px;'>
-        Scanning <b>{len(symbols)} symbols</b> — estimated time: <b>{est_label}</b>.
-        Fetches EOD data from Yahoo Finance. Best run after <b>3:30 PM IST</b>.
+        Scanning <b>{len(symbols)} symbols</b> — estimated time: <b>{est_label}</b>.<br>
+        Best run after 15:30–16:00 IST. Data from Yahoo Finance.
         </p>""", unsafe_allow_html=True)
 
-    # ── Run scan ──────────────────────────────────────────────
     if run_now:
         if not symbols:
-            st.error("No symbols selected. Please enter a custom list or choose a preset.")
+            st.error("No symbols selected. Choose a universe or enter custom list.")
             st.stop()
 
         st.session_state.scan_running = True
-        fetch_ohlcv.clear()  # force fresh EOD data
+        fetch_ohlcv.clear()  # fresh EOD fetch
 
         progress_bar = st.progress(0)
         status_text  = st.empty()
@@ -450,7 +440,7 @@ def main():
 
         results, errors = run_scan(
             symbols, rsi_range[0], rsi_range[1],
-            vol_mult, obv_lookback, progress_cb,
+            vol_mult, obv_lookback, progress_cb
         )
 
         st.session_state.scan_results   = results
@@ -461,18 +451,17 @@ def main():
         status_text.empty()
         st.rerun()
 
-    # ── Display results ───────────────────────────────────────
     if st.session_state.scan_results is not None:
         results = st.session_state.scan_results
 
         if results.empty:
             st.warning("""
             ⚠️ No stocks passed all 5 filters today.
-            **Try:** widening the RSI range, lowering the volume multiplier,
-            or reducing the OBV lookback period.
+            Try: wider RSI, lower vol multiplier, shorter OBV lookback.
             """)
         else:
             st.success(f"✅ **{len(results)} stock(s)** passed all 5 momentum filters.")
+            st.caption(f"Data scanned at {st.session_state.last_scan_time.strftime('%d %b %Y %H:%M IST')}")
 
             sc1, sc2, sc3, sc4 = st.columns(4)
             with sc1:
@@ -490,7 +479,6 @@ def main():
             tab1, tab2, tab3, tab4 = st.tabs(
                 ["📋 All Results", "🏆 Top 10 Picks", "📊 Charts", "📥 Export"])
 
-            # ── All Results ──────────────────────────────────
             with tab1:
                 cols = [
                     "Symbol", "LTP", "200 DMA", "% vs 200 DMA",
@@ -517,7 +505,6 @@ def main():
                 )
                 st.dataframe(styled, use_container_width=True, height=480)
 
-            # ── Top 10 ───────────────────────────────────────
             with tab2:
                 st.markdown("### 🏆 Top 10 — Ranked by Momentum Gap")
                 top10 = results.head(10)
@@ -528,8 +515,7 @@ def main():
                     pct52 = row["% from 52W High"]
                     b52   = (
                         f'<span class="badge-green">{pct52:+.1f}%</span>'
-                        if pct52 > -10
-                        else f'<span style="color:#f87171">{pct52:+.1f}%</span>'
+                        if pct52 > -10 else f'<span style="color:#f87171">{pct52:+.1f}%</span>'
                     )
                     rows_html += f"""
                     <tr>
@@ -561,52 +547,41 @@ def main():
 
                 st.markdown("""
                 <div class="info-box" style='margin-top:20px'>
-                  🎯 <b>Trade Setup for Next Session</b><br>
-                  &nbsp;&nbsp;📌 <b>Entry:</b> Wait for a pullback to the 20 EMA — enter on the bounce with confirming volume<br>
-                  &nbsp;&nbsp;🛑 <b>Stop Loss:</b> Below the most recent swing low or below the 20 EMA (whichever is tighter)<br>
-                  &nbsp;&nbsp;💰 <b>Target 1 (50% qty):</b> 1.5× the risk taken — then trail stop to breakeven<br>
-                  &nbsp;&nbsp;🚀 <b>Target 2 (remaining):</b> Trail SL below each successive 5-day low<br>
-                  &nbsp;&nbsp;⚠️ <b>Ban list check:</b> Always verify the stock isn't on the
-                  <a href="https://www.nseindia.com/regulations/member-regulation-fo-participants-ban" 
-                  target="_blank" style="color:#818cf8">NSE F&amp;O ban list</a> before placing any order
+                  🎯 <b>Trade Setup Suggestion</b><br>
+                  📌 <b>Entry:</b> Pullback to 20 EMA + volume confirmation<br>
+                  🛑 <b>Stop:</b> Below recent swing low or 20 EMA<br>
+                  💰 <b>Targets:</b> 1.5× risk (50%), trail rest<br>
+                  ⚠️ <b>Critical:</b> Check NSE F&amp;O ban list before trading futures — 
+                  <a href="https://www.nseindia.com/regulations/member-regulation-fo-participants-ban" target="_blank" style="color:#818cf8">click here</a><br>
+                  Current example (Feb 2026): SAIL, SAMMAANCAP often in ban.
                 </div>
                 """, unsafe_allow_html=True)
 
-            # ── Charts ───────────────────────────────────────
             with tab3:
                 c_l, c_r = st.columns(2)
                 with c_l:
-                    st.markdown("**📊 Momentum Gap — Top 15**")
+                    st.markdown("**Momentum Gap — Top 15**")
                     st.bar_chart(results[["Symbol","Momentum Gap"]].head(15).set_index("Symbol"))
                 with c_r:
-                    st.markdown("**📊 RSI Values — Top 15**")
+                    st.markdown("**RSI Values — Top 15**")
                     st.bar_chart(results[["Symbol","RSI (14)"]].head(15).set_index("Symbol"))
 
-                c_l2, c_r2 = st.columns(2)
-                with c_l2:
-                    st.markdown("**📊 OBV Slope — Top 15**")
-                    st.bar_chart(results[["Symbol","OBV Slope"]].head(15).set_index("Symbol"))
-                with c_r2:
-                    st.markdown("**📊 Volume Ratio — Top 15**")
-                    st.bar_chart(results[["Symbol","Vol Ratio"]].head(15).set_index("Symbol"))
-
-            # ── Export ───────────────────────────────────────
             with tab4:
                 st.markdown("### 📥 Export Results")
+                today_str = datetime.date.today().strftime("%Y-%m-%d")
                 csv = results.to_csv(index=True).encode("utf-8")
                 st.download_button(
                     "⬇️ Download Full Results as CSV",
                     data=csv,
-                    file_name=f"fo_momentum_{datetime.date.today()}.csv",
+                    file_name=f"fo_momentum_{today_str}.csv",
                     mime="text/csv",
                     use_container_width=True,
                 )
-                st.markdown("#### Symbol List — copy into broker terminal")
+                st.markdown("#### Symbol List — for broker terminal")
                 st.code(", ".join(results["Symbol"].tolist()), language="text")
 
-        # Errors
         if st.session_state.errors:
-            with st.expander(f"⚠️ {len(st.session_state.errors)} symbols had data errors"):
+            with st.expander(f"⚠️ {len(st.session_state.errors)} symbols had errors"):
                 for e in st.session_state.errors[:30]:
                     st.text(e)
 
