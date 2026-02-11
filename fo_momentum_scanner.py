@@ -1,15 +1,5 @@
-"""
-Institutional F&O Positional Futures Scanner (Stable 2026 version)
-Focus: Long Buildup (OI ↑ + Price ↑ + RS vs Nifty + ATR stop)
-
-Improvements:
-- Correct NSE bhavcopy URL for 2025–2026 format
-- Exclude index futures (NIFTY, BANKNIFTY, etc.)
-- Proper relative strength (total return over lookback)
-- Caching on price data
-- ThreadPool with error handling
-- Ban-list check (optional)
-"""
+# fo_positional_scanner.py
+# Institutional Positional F&O Futures Scanner – 2026 format fix
 
 import streamlit as st
 import pandas as pd
@@ -20,7 +10,6 @@ import zipfile
 import io
 import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, timedelta
 
 st.set_page_config(page_title="F&O Positional Scanner", layout="wide")
 
@@ -30,60 +19,56 @@ st.set_page_config(page_title="F&O Positional Scanner", layout="wide")
 
 RS_LOOKBACK = 60
 ATR_PERIOD = 14
-MIN_OI_PCT_CHANGE = 5.0
+MIN_OI_PCT = 5
 MAX_WORKERS = 6
-USE_BAN_FILTER = True
 
 # =========================================================
 # UTILITY FUNCTIONS
 # =========================================================
 
 def get_last_trading_day():
-    return date.today() - timedelta(days=1)
+    today = datetime.date.today()
+    return today - datetime.timedelta(days=1)
 
-# ─────────────────────────────────────────────
-# FETCH F&O BHAVCOPY (2026 format)
-# ─────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600)
 def fetch_fo_bhavcopy():
-    s = requests.Session()
-    s.headers.update({"User-Agent": "Mozilla/5.0"})
-    try:
-        s.get("https://www.nseindia.com", timeout=5)  # session priming
-    except:
-        pass
-
-    dt = get_last_trading_day()
+    date = get_last_trading_day()
     for i in range(7):  # try last 7 days
-        d = dt - timedelta(days=i)
+        d = date - datetime.timedelta(days=i)
         date_str = d.strftime("%Y%m%d")
         url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
         try:
-            r = s.get(url, timeout=10)
+            r = requests.get(url, timeout=10)
             if r.status_code == 200:
-                with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-                    df = pd.read_csv(z.open(z.namelist()[0]))
-                    df.columns = df.columns.str.strip().str.upper()
-                    return df
+                z = zipfile.ZipFile(io.BytesIO(r.content))
+                df = pd.read_csv(z.open(z.namelist()[0]))
+                df.columns = df.columns.str.strip().str.upper()
+                return df
         except:
             continue
     return pd.DataFrame()
 
-# ─────────────────────────────────────────────
-# EXTRACT STOCK FUTURES ONLY (exclude indices)
-# ─────────────────────────────────────────────
 def extract_stock_universe(df):
     if df.empty:
         return []
 
-    # Filter to stock futures (FUTSTK)
-    df = df[df["INSTRUMENT"] == "FUTSTK"]
+    instrument_col = next((c for c in df.columns if 'fininstrmtp' in c.lower()), None)
+    symbol_col = next((c for c in df.columns if 'tckrsymb' in c.lower() or 'symbol' in c.lower()), None)
 
-    # Exclude index-like symbols
+    if instrument_col is None or symbol_col is None:
+        st.warning("Could not find required columns in bhavcopy.")
+        return []
+
+    # Filter stock futures only
+    stock_futures = df[df[instrument_col] == 'STF']
+
+    symbols = stock_futures[symbol_col].dropna().astype(str).str.strip().str.upper().unique().tolist()
+
+    # Remove index futures
     exclude = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50", "SENSEX"]
-    symbols = [s for s in df["SYMBOL"].unique() if s not in exclude]
+    filtered = [s for s in symbols if not any(p in s for p in exclude)]
 
-    return sorted(symbols)
+    return sorted(set(filtered))
 
 # ─────────────────────────────────────────────
 # OPTIONAL: FETCH BAN LIST
