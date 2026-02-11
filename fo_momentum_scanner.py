@@ -46,13 +46,39 @@ def get_session():
 # ─────────────────────────────────────────────
 @st.cache_data(ttl=86400)
 def get_fo_universe():
-    s = get_session()
-    url = "https://www.nseindia.com/api/derivatives/equity-derivatives"
-    r = s.get(url, timeout=10)
-    data = r.json()
-    df = pd.DataFrame(data['data'])
-    symbols = sorted(df['symbol'].unique())
-    return symbols
+    """
+    Fetch F&O eligible securities using NSE official CSV.
+    This is stable and cloud-safe.
+    """
+
+    session = get_session()
+
+    # Official NSE F&O securities list (public CSV)
+    url = "https://archives.nseindia.com/content/fo/fo_mktlots.csv"
+
+    try:
+        r = session.get(url, timeout=10)
+
+        if r.status_code != 200:
+            st.error("Unable to fetch F&O list from NSE.")
+            return []
+
+        df = pd.read_csv(io.StringIO(r.text))
+
+        # Clean column names
+        df.columns = df.columns.str.strip()
+
+        # Remove index rows
+        df = df[~df['SYMBOL'].str.contains("NIFTY|BANKNIFTY", na=False)]
+
+        symbols = sorted(df['SYMBOL'].unique())
+
+        return symbols
+
+    except Exception as e:
+        st.error("F&O universe fetch failed.")
+        return []
+
 
 # ─────────────────────────────────────────────
 # GET CASH BHAVCOPY
