@@ -31,7 +31,7 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# CSS (same as your original)
+# CSS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -85,13 +85,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-USE_ALL_FNO = True
-CORE_TICKERS = [
-    "NIFTY", "BANKNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN",
-    "INFY", "TCS", "ITC", "HINDUNILVR", "BHARTIARTL", "LT", "KOTAKBANK",
-    "TATASTEEL", "COALINDIA", "ASIANPAINT", "MARUTI", "DRREDDY",
-    "TATAPOWER", "INDIGO", "ULTRACEMCO", "ONGC", "BAJFINANCE"
-]
 # ─────────────────────────────────────────────
 # SESSION STATE
 # ─────────────────────────────────────────────
@@ -105,10 +98,7 @@ for key, default in {
         st.session_state[key] = default
 
 # ─────────────────────────────────────────────
-# FETCH EXACT NSE F&O SYMBOLS FROM BHAVCOPY ZIP
-# ─────────────────────────────────────────────
-# ─────────────────────────────────────────────
-# NSE HELPERS (aligned with your working standalone script)
+# NSE SESSION & BHAVCOPY FETCH (with priming - critical!)
 # ─────────────────────────────────────────────
 def get_nse_session():
     s = requests.Session()
@@ -118,10 +108,10 @@ def get_nse_session():
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
     })
-    # Critical priming step
+    # Prime session - visit main site first
     try:
         s.get("https://www.nseindia.com", timeout=8)
-        st.toast("NSE session primed (homepage visited)")
+        st.toast("NSE homepage primed (session cookies set)")
     except Exception as e:
         st.toast(f"Priming failed: {str(e)[:60]}...")
     return s
@@ -129,54 +119,55 @@ def get_nse_session():
 def download_fo():
     s = get_nse_session()
     today = date.today()
-    for i in range(10):  # wider window for safety
+    for i in range(10):
         d = today - timedelta(days=i)
-        url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{d.strftime('%Y%m%d')}_F_0000.csv.zip"
+        date_str = d.strftime("%Y%m%d")
+        url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
         try:
-            st.toast(f"Trying bhavcopy for {d.strftime('%d-%b-%Y')}...")
+            st.toast(f"Trying {d.strftime('%d-%b-%Y')}...")
             r = s.get(url, timeout=12)
-            st.toast(f"Status: {r.status_code}")
+            st.toast(f"Status for {date_str}: {r.status_code}")
             if r.status_code == 200:
                 with zipfile.ZipFile(io.BytesIO(r.content)) as z:
                     csv_name = z.namelist()[0]
                     st.toast(f"Success → extracting {csv_name}")
-                    return pd.read_csv(z.open(csv_name))
+                    return pd.read_csv(z.open(csv_name), low_memory=False)
         except Exception as e:
-            st.toast(f"Failed for {d}: {str(e)[:60]}...")
+            st.toast(f"Failed for {date_str}: {str(e)[:60]}...")
             continue
-    st.warning("⚠️ No recent F&O bhavcopy could be downloaded. Using fallback universe.")
+    st.warning("⚠️ No recent F&O bhavcopy found. Using fallback ~50 symbols.")
     return pd.DataFrame()
 
 # ─────────────────────────────────────────────
-# BUILD UNIVERSE (using the same logic as your standalone)
+# GET F&O SYMBOLS
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=3600 * 4, show_spinner=False)  # shorter cache to allow quick retries
+@st.cache_data(ttl=3600 * 4, show_spinner=False)  # 4 hours cache
 def get_fo_symbols():
     fo_df = download_fo()
     if fo_df.empty:
         st.warning("Fallback to core + common F&O symbols (~50).")
-        return sorted(set(CORE_TICKERS + [
-            "HAL", "BEL", "SAIL", "IRFC", "PFC", "RECLTD", "ZOMATO", "ADANIENT",
-            "TRENT", "SHRIRAMFIN", "TATATECH", "KALYANKJIL"
-        ]))
+        fallback = [
+            "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "SBIN", "BHARTIARTL", "ITC",
+            "LT", "KOTAKBANK", "AXISBANK", "BAJFINANCE", "TATAMOTORS", "SUNPHARMA", "TITAN",
+            "MARUTI", "ULTRACEMCO", "ADANIENT", "ZOMATO", "HAL", "BEL", "IRFC", "PFC", "RECLTD", "SAIL"
+        ]
+        return sorted(fallback)
 
-    # Extract unique stock symbols (STF = Stock Futures)
-    if "FinInstrmTp" in fo_df.columns and "TckrSymb" in fo_df.columns:
-        stocks = fo_df[fo_df["FinInstrmTp"] == "STF"]["TckrSymb"].str.upper().unique()
-        valid = set(stocks)
-        # Optional: exclude banned (your fetch_ban_list logic can be added here)
-        return sorted(list(valid))
-    else:
-        st.warning("Bhavcopy loaded but columns missing. Using fallback.")
-        return sorted(set(CORE_TICKERS))
+    sym_col = next((c for c in fo_df.columns if 'symbol' in c.lower() or 'tckrsymb' in c.lower()), None)
+    if sym_col is None:
+        st.warning("Bhavcopy loaded but no symbol column found. Using fallback.")
+        return sorted(["RELIANCE", "TCS", "HDFCBANK"])
 
-ALL_FO_SYMBOLS = list(get_fo_symbols().keys()) if isinstance(get_fo_symbols(), dict) else get_fo_symbols()
+    stocks = fo_df[sym_col].dropna().str.strip().str.upper().unique().tolist()
+    return sorted(stocks)
+
+ALL_FO_SYMBOLS = get_fo_symbols()
 
 def to_yf(sym: str) -> str:
     return sym + ".NS"
 
 # ─────────────────────────────────────────────
-# DATA FETCH (OHLCV via yfinance)
+# DATA FETCH
 # ─────────────────────────────────────────────
 @st.cache_data(ttl=3600 * 6, show_spinner=False)
 def fetch_ohlcv(symbol: str) -> pd.DataFrame:
@@ -209,7 +200,7 @@ def obv_trending_up(obv: pd.Series, lookback: int = 5) -> bool:
     return slope > 0
 
 # ─────────────────────────────────────────────
-# SCAN SINGLE STOCK
+# SCAN SINGLE
 # ─────────────────────────────────────────────
 def scan_single(symbol: str, rsi_low: float, rsi_high: float,
                 vol_mult: float, obv_lookback: int):
@@ -278,7 +269,7 @@ def scan_single(symbol: str, rsi_low: float, rsi_high: float,
         return {"_error": symbol, "_msg": str(e)}
 
 # ─────────────────────────────────────────────
-# RUN FULL SCAN
+# RUN SCAN
 # ─────────────────────────────────────────────
 def run_scan(symbols, rsi_low, rsi_high, vol_mult, obv_lookback, progress_cb=None):
     results, errors = [], []
@@ -359,20 +350,20 @@ def render_sidebar():
     st.sidebar.markdown("""
     <div style='font-size:0.75rem; color:#475569'>
     Universe auto-fetched from NSE F&amp;O bhavcopy (~180–220 symbols).<br>
-    Cached 12h — fresh on restart if needed.
+    Watch toasts for fetch status. Cached 4h.
     </div>
     """, unsafe_allow_html=True)
 
     return rsi_range, vol_mult, obv_lookback, universe, custom_syms
 
 # ─────────────────────────────────────────────
-# MAIN APP
+# MAIN
 # ─────────────────────────────────────────────
 def main():
     st.markdown("""
     <div class="header-bar">
       <h1>📈 F&amp;O Momentum Scanner — 5-Filter System</h1>
-      <p>Exact NSE F&amp;O universe from bhavcopy · yfinance prices · Run after close</p>
+      <p>Exact NSE F&amp;O from bhavcopy · yfinance prices · Run after close</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -380,8 +371,8 @@ def main():
 
     st.markdown("""
     <div class="obv-note">
-      <b>Filter ③ — OBV:</b> Rising slope over N days + close up = institutional accumulation proxy.<br>
-      Purely from price/volume — no external OI needed.
+      <b>Filter ③ — OBV:</b> Rising slope over N days + close up = institutional buying proxy.<br>
+      Computed from price + volume only.
     </div>
     """, unsafe_allow_html=True)
 
@@ -413,7 +404,7 @@ def main():
         st.markdown(f"""
         <p style='color:#64748b; font-size:0.85rem; margin-top:10px;'>
         Scanning <b>{len(symbols)} F&amp;O symbols</b> — est. {est_label}<br>
-        Best after 15:30–16:00 IST.
+        Best after 15:30–16:00 IST. Watch toasts for bhavcopy status.
         </p>""", unsafe_allow_html=True)
 
     if run_now:
@@ -523,7 +514,7 @@ def main():
                 with c2: st.bar_chart(results.head(15)[["Symbol", "RSI (14)"]].set_index("Symbol"))
 
             with tab4:
-                today_str = datetime.date.today().strftime("%Y-%m-%d")
+                today_str = date.today().strftime("%Y-%m-%d")
                 csv = results.to_csv(index=True).encode("utf-8")
                 st.download_button(
                     "⬇️ Download Results CSV",
