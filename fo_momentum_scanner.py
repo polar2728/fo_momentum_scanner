@@ -100,57 +100,59 @@ for key, default in {
 # ─────────────────────────────────────────────
 # FETCH EXACT NSE F&O SYMBOLS FROM BHAVCOPY ZIP
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=3600 * 12, show_spinner=False)  # Cache 12 hours
+@st.cache_data(ttl=3600 * 4, show_spinner=False)  # 4 hours - easier to force refresh
 def get_nse_fo_symbols():
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
     s = requests.Session()
     s.headers.update(headers)
+
+    # Prime the session - critical for NSE archives
+    try:
+        s.get("https://www.nseindia.com", timeout=8)
+        st.toast("NSE homepage visited → session primed")
+    except Exception as e:
+        st.toast(f"Session priming failed: {str(e)}")
 
     today = datetime.date.today()
     symbols = set()
 
-    # Try last 7 days for the new format ZIP
-    for i in range(7):
+    # Try last 10 days
+    for i in range(10):
         d = today - datetime.timedelta(days=i)
         date_str = d.strftime("%Y%m%d")
         url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
 
         try:
-            r = s.get(url, timeout=12)
+            st.toast(f"Trying {d.strftime('%d-%b-%Y')} → {url}")
+            r = s.get(url, timeout=15)
+            st.toast(f"Status for {date_str}: {r.status_code}")
             if r.status_code == 200:
                 with zipfile.ZipFile(io.BytesIO(r.content)) as z:
                     csv_file = z.namelist()[0]
                     with z.open(csv_file) as f:
-                        df = pd.read_csv(f)
-                        # Column is usually 'SYMBOL' (case-insensitive search)
-                        sym_col = next((c for c in df.columns if 'symbol' in c.lower()), None)
-                        if sym_col:
-                            new_syms = df[sym_col].dropna().astype(str).str.strip().str.upper().unique().tolist()
+                        df = pd.read_csv(f, low_memory=False)
+                        sym_col = next((c for c in df.columns if 'symbol' in c.lower()), 'SYMBOL')
+                        if sym_col in df.columns:
+                            new_syms = df[sym_col].dropna().str.strip().str.upper().unique().tolist()
                             symbols.update(new_syms)
-                            st.toast(f"✅ Loaded {len(new_syms)} F&O symbols from {d}")
-                            return sorted(list(symbols))  # success → return immediately
-        except Exception:
+                            st.success(f"Loaded {len(new_syms)} symbols from {d.strftime('%d-%b')}")
+                            return sorted(list(symbols))
+        except Exception as e:
+            st.toast(f"Error on {date_str}: {str(e)[:60]}...")
             continue
 
-    # Fallback: try generic fo.zip if available
-    try:
-        r = s.get("https://nsearchives.nseindia.com/content/fo/fo.zip", timeout=10)
-        if r.status_code == 200:
-            with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-                csv_file = z.namelist()[0]
-                with z.open(csv_file) as f:
-                    df = pd.read_csv(f)
-                    sym_col = next((c for c in df.columns if 'symbol' in c.lower()), None)
-                    if sym_col:
-                        symbols.update(df[sym_col].dropna().astype(str).str.strip().str.upper().unique().tolist())
-    except:
-        pass
-
-    if not symbols:
-        st.warning("⚠️ Could not fetch NSE F&O bhavcopy. Using small fallback list. Try custom universe or check internet/NSE site.")
-        return sorted(["RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "SBIN", "BHARTIARTL", "ITC"])
-
-    return sorted(list(symbols))
+    # Final fallback if all failed
+    st.warning("All bhavcopy attempts failed. Using fallback ~50 F&O symbols.")
+    fallback = [
+        "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "SBIN", "BHARTIARTL", "ITC",
+        "LT", "KOTAKBANK", "AXISBANK", "BAJFINANCE", "TATAMOTORS", "SUNPHARMA", "TITAN",
+        "MARUTI", "ULTRACEMCO", "ADANIENT", "ZOMATO", "HAL", "BEL", "IRFC", "PFC", "RECLTD", "SAIL"
+    ]
+    return sorted(fallback)
 
 ALL_FO_SYMBOLS = get_nse_fo_symbols()
 
