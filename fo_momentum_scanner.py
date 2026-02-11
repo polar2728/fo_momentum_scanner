@@ -102,6 +102,38 @@ for key, default in {
 # ─────────────────────────────────────────────
 # FETCH EXACT NSE F&O SYMBOLS FROM BHAVCOPY ZIP
 # ─────────────────────────────────────────────
+def get_nse_session():
+    s = requests.Session()
+    s.headers.update({"User-Agent": "Mozilla/5.0", "Referer": "https://www.nseindia.com"})
+    try:
+        s.get("https://www.nseindia.com", timeout=5)
+    except:
+        pass
+    return s
+
+def fetch_ban_list():
+    url = "https://nsearchives.nseindia.com/content/fo/fo_secban.csv"
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if r.status_code != 200:
+            return set()
+        text = r.text.strip()
+        if "Securities in Ban" not in text:
+            return set()
+        header = text.splitlines()[0]
+        ban_part = header.split(":", 1)[1].strip() if ':' in header else ""
+        banned = set()
+        for item in ban_part.split():
+            if ',' in item:
+                sym = item.split(",", 1)[1].strip().upper()
+                if sym.isalpha():
+                    banned.add(sym)
+        print(f"🚫 Banned symbols: {len(banned)}")
+        return banned
+    except Exception:
+        print("⚠️ Ban list unavailable")
+        return set()
+        
 def download_fo():
     s = get_nse_session()
     for i in range(7):
