@@ -19,6 +19,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 import ta
+import datetime
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
