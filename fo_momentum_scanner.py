@@ -1,7 +1,7 @@
 """
 F&O Momentum Scanner — 5-Filter System
-Dynamic NSE F&O symbols from official bhavcopy ZIP (no hard-coded lists)
-Uses yfinance for OHLCV + requests for NSE bhavcopy
+Dynamic NSE F&O symbols from official bhavcopy ZIP
+Fixed: removed UI calls from cached functions to prevent CacheReplayClosureError
 
 Install:
   pip install streamlit yfinance pandas numpy ta requests
@@ -98,22 +98,18 @@ for key, default in {
         st.session_state[key] = default
 
 # ─────────────────────────────────────────────
-# NSE SESSION & BHAVCOPY FETCH (with priming - critical!)
+# NSE FETCH HELPERS (no st calls inside cached functions)
 # ─────────────────────────────────────────────
 def get_nse_session():
     s = requests.Session()
     s.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": "https://www.nseindia.com/",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
     })
-    # Prime session - visit main site first
     try:
         s.get("https://www.nseindia.com", timeout=8)
-        st.toast("NSE homepage primed (session cookies set)")
-    except Exception as e:
-        st.toast(f"Priming failed: {str(e)[:60]}...")
+    except:
+        pass
     return s
 
 def download_fo():
@@ -121,31 +117,20 @@ def download_fo():
     today = date.today()
     for i in range(10):
         d = today - timedelta(days=i)
-        date_str = d.strftime("%Y%m%d")
-        url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
+        url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{d.strftime('%Y%m%d')}_F_0000.csv.zip"
         try:
-            st.toast(f"Trying {d.strftime('%d-%b-%Y')}...")
             r = s.get(url, timeout=12)
-            st.toast(f"Status for {date_str}: {r.status_code}")
             if r.status_code == 200:
                 with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-                    csv_name = z.namelist()[0]
-                    st.toast(f"Success → extracting {csv_name}")
-                    return pd.read_csv(z.open(csv_name), low_memory=False)
-        except Exception as e:
-            st.toast(f"Failed for {date_str}: {str(e)[:60]}...")
+                    return pd.read_csv(z.open(z.namelist()[0]), low_memory=False)
+        except:
             continue
-    st.warning("⚠️ No recent F&O bhavcopy found. Using fallback ~50 symbols.")
     return pd.DataFrame()
 
-# ─────────────────────────────────────────────
-# GET F&O SYMBOLS
-# ─────────────────────────────────────────────
-@st.cache_data(ttl=3600 * 4, show_spinner=False)  # 4 hours cache
+@st.cache_data(ttl=14400, show_spinner=False)  # 4 hours
 def get_fo_symbols():
     fo_df = download_fo()
     if fo_df.empty:
-        st.warning("Fallback to core + common F&O symbols (~50).")
         fallback = [
             "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "SBIN", "BHARTIARTL", "ITC",
             "LT", "KOTAKBANK", "AXISBANK", "BAJFINANCE", "TATAMOTORS", "SUNPHARMA", "TITAN",
@@ -155,7 +140,6 @@ def get_fo_symbols():
 
     sym_col = next((c for c in fo_df.columns if 'symbol' in c.lower() or 'tckrsymb' in c.lower()), None)
     if sym_col is None:
-        st.warning("Bhavcopy loaded but no symbol column found. Using fallback.")
         return sorted(["RELIANCE", "TCS", "HDFCBANK"])
 
     stocks = fo_df[sym_col].dropna().str.strip().str.upper().unique().tolist()
@@ -169,7 +153,7 @@ def to_yf(sym: str) -> str:
 # ─────────────────────────────────────────────
 # DATA FETCH
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=3600 * 6, show_spinner=False)
+@st.cache_data(ttl=21600, show_spinner=False)  # 6 hours
 def fetch_ohlcv(symbol: str) -> pd.DataFrame:
     ticker = yf.Ticker(to_yf(symbol))
     df = ticker.history(period="14mo", auto_adjust=True)
@@ -200,7 +184,7 @@ def obv_trending_up(obv: pd.Series, lookback: int = 5) -> bool:
     return slope > 0
 
 # ─────────────────────────────────────────────
-# SCAN SINGLE
+# SCAN SINGLE STOCK
 # ─────────────────────────────────────────────
 def scan_single(symbol: str, rsi_low: float, rsi_high: float,
                 vol_mult: float, obv_lookback: int):
@@ -269,7 +253,7 @@ def scan_single(symbol: str, rsi_low: float, rsi_high: float,
         return {"_error": symbol, "_msg": str(e)}
 
 # ─────────────────────────────────────────────
-# RUN SCAN
+# RUN FULL SCAN
 # ─────────────────────────────────────────────
 def run_scan(symbols, rsi_low, rsi_high, vol_mult, obv_lookback, progress_cb=None):
     results, errors = [], []
@@ -308,14 +292,19 @@ def render_sidebar():
     st.sidebar.markdown("### 🎛️ Filter Parameters")
 
     rsi_range = st.sidebar.slider(
-        "RSI Range (Filter 4)", 30, 90, (55, 70),
-        help="Avoid overbought entries"
+        "RSI Range (Filter 4)",
+        min_value=30, max_value=90, value=(55, 70),
+        help="Only include stocks with RSI within this band — avoids overbought entries",
     )
     vol_mult = st.sidebar.slider(
-        "Volume Multiplier (Filter 5)", 1.0, 4.0, 1.5, 0.1
+        "Volume Multiplier (Filter 5)",
+        min_value=1.0, max_value=4.0, value=1.5, step=0.1,
+        help="Latest session volume must exceed this multiple of the 20-day average",
     )
     obv_lookback = st.sidebar.slider(
-        "OBV Lookback (Filter 3)", 3, 10, 5
+        "OBV Lookback Sessions (Filter 3)",
+        min_value=3, max_value=10, value=5,
+        help="Number of sessions over which OBV slope is measured. Higher = stricter.",
     )
 
     st.sidebar.markdown("---")
@@ -329,7 +318,7 @@ def render_sidebar():
     custom_syms = []
     if universe == "Custom List":
         raw = st.sidebar.text_area(
-            "Symbols (comma-separated, NO .NS)",
+            "Symbols (comma-separated, NO .NS suffix)",
             placeholder="RELIANCE,TCS,HDFCBANK",
             height=100,
         )
@@ -340,30 +329,34 @@ def render_sidebar():
     for f in [
         "① Price > 200 DMA",
         "② 1M return > 6M return",
-        f"③ OBV rising ({obv_lookback}-day) + Price ↑",
+        f"③ OBV rising ({obv_lookback}-day slope) + Price ↑",
         f"④ RSI {rsi_range[0]}–{rsi_range[1]}",
         f"⑤ Volume > {vol_mult}× 20-day avg",
     ]:
-        st.sidebar.markdown(f'<span class="chip chip-active">{f}</span>', unsafe_allow_html=True)
+        st.sidebar.markdown(
+            f'<span class="chip chip-active">{f}</span>',
+            unsafe_allow_html=True,
+        )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("""
-    <div style='font-size:0.75rem; color:#475569'>
-    Universe auto-fetched from NSE F&amp;O bhavcopy (~180–220 symbols).<br>
-    Watch toasts for fetch status. Cached 4h.
+    <div style='font-size:0.75rem; color:#475569; line-height:1.7'>
+    <b>ℹ️ Note:</b><br>
+    Universe from NSE F&O bhavcopy (~180–220 symbols).<br>
+    Cached 4 hours — restart app or wait to refresh.
     </div>
     """, unsafe_allow_html=True)
 
     return rsi_range, vol_mult, obv_lookback, universe, custom_syms
 
 # ─────────────────────────────────────────────
-# MAIN
+# MAIN APP
 # ─────────────────────────────────────────────
 def main():
     st.markdown("""
     <div class="header-bar">
       <h1>📈 F&amp;O Momentum Scanner — 5-Filter System</h1>
-      <p>Exact NSE F&amp;O from bhavcopy · yfinance prices · Run after close</p>
+      <p>Long bias · NSE Futures · yfinance + NSE bhavcopy · No login</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -371,25 +364,26 @@ def main():
 
     st.markdown("""
     <div class="obv-note">
-      <b>Filter ③ — OBV:</b> Rising slope over N days + close up = institutional buying proxy.<br>
-      Computed from price + volume only.
+      <b>Filter ③ — OBV (On-Balance Volume):</b><br>
+      Rising OBV slope over last N sessions + today's close > yesterday = institutional accumulation proxy.<br>
+      Fully computed from daily price & volume — no external files needed.
     </div>
     """, unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
     n_res = len(st.session_state.scan_results) if st.session_state.scan_results is not None else "—"
     ts    = st.session_state.last_scan_time
-    with c1: st.metric("Stocks Passing", n_res)
-    with c2: st.metric("Last Scan", ts.strftime("%H:%M  %d-%b") if ts else "Not run")
+    with c1: st.metric("Stocks Passing All 5 Filters", n_res)
+    with c2: st.metric("Last Scan", ts.strftime("%H:%M  %d-%b") if ts else "Not run yet")
     with c3: st.metric("RSI Band", f"{rsi_range[0]} – {rsi_range[1]}")
-    with c4: st.metric("Vol >", f"{vol_mult}× avg")
+    with c4: st.metric("Vol Threshold", f"> {vol_mult}× avg")
 
     st.markdown("---")
 
     symbols = ALL_FO_SYMBOLS if universe_opt == "All NSE F&O (from latest bhavcopy)" else custom_syms
 
     if not symbols:
-        st.error("No symbols available. Use Custom List or check NSE connectivity.")
+        st.error("No symbols available. Use Custom List or restart app.")
         st.stop()
 
     est_secs  = round(len(symbols) * 0.10)
@@ -397,14 +391,14 @@ def main():
 
     col_btn, col_info = st.columns([2, 5])
     with col_btn:
-        label = "🔄 Re-scan" if st.session_state.scan_results is not None else "🚀 Run Scan"
+        label   = "🔄 Re-scan" if st.session_state.scan_results is not None else "🚀 Run Scan"
         run_now = st.button(label, type="primary", use_container_width=True,
                             disabled=st.session_state.scan_running)
     with col_info:
         st.markdown(f"""
         <p style='color:#64748b; font-size:0.85rem; margin-top:10px;'>
-        Scanning <b>{len(symbols)} F&amp;O symbols</b> — est. {est_label}<br>
-        Best after 15:30–16:00 IST. Watch toasts for bhavcopy status.
+        Scanning <b>{len(symbols)} symbols</b> — estimated time: <b>{est_label}</b>.<br>
+        Best run after 15:30 IST. Data from Yahoo Finance + NSE.
         </p>""", unsafe_allow_html=True)
 
     if run_now:
@@ -416,10 +410,14 @@ def main():
 
         def progress_cb(done, total, sym):
             progress_bar.progress(done / total)
-            status_text.markdown(f'<p class="scan-label">Scanning {done}/{total} — {sym}</p>', unsafe_allow_html=True)
+            status_text.markdown(
+                f'<p class="scan-label">Scanning {done}/{total} — <b>{sym}</b></p>',
+                unsafe_allow_html=True,
+            )
 
         results, errors = run_scan(
-            symbols, rsi_range[0], rsi_range[1], vol_mult, obv_lookback, progress_cb
+            symbols, rsi_range[0], rsi_range[1],
+            vol_mult, obv_lookback, progress_cb
         )
 
         st.session_state.scan_results   = results
@@ -434,20 +432,29 @@ def main():
         results = st.session_state.scan_results
 
         if results.empty:
-            st.warning("No stocks passed all filters. Try wider RSI or lower vol multiplier.")
+            st.warning("""
+            ⚠️ No stocks passed all 5 filters today.
+            Try: widening RSI range, lowering volume multiplier,
+            or shortening OBV lookback.
+            """)
         else:
-            st.success(f"✅ **{len(results)} stocks** passed momentum filters.")
-            st.caption(f"Data as of {st.session_state.last_scan_time.strftime('%d %b %Y %H:%M IST')} | Universe: {len(symbols)} F&O symbols")
+            st.success(f"✅ **{len(results)} stock(s)** passed all 5 momentum filters.")
 
             sc1, sc2, sc3, sc4 = st.columns(4)
-            with sc1: st.metric("Top Pick", results.iloc[0]["Symbol"], f"+{results.iloc[0]['Momentum Gap']:.1f}% gap")
-            with sc2: st.metric("Avg RSI", round(results["RSI (14)"].mean(), 1))
-            with sc3: st.metric("Avg Vol Ratio", f"{results['Vol Ratio'].mean():.2f}×")
-            with sc4: st.metric("Avg Gap", f"+{results['Momentum Gap'].mean():.1f}%")
+            with sc1:
+                st.metric("Top Pick", results.iloc[0]["Symbol"],
+                          delta=f"+{results.iloc[0]['Momentum Gap']:.1f}% mom gap")
+            with sc2:
+                st.metric("Avg RSI", round(results["RSI (14)"].mean(), 1))
+            with sc3:
+                st.metric("Avg Vol Ratio", f"{results['Vol Ratio'].mean():.2f}×")
+            with sc4:
+                st.metric("Avg Momentum Gap", f"+{results['Momentum Gap'].mean():.1f}%")
 
             st.markdown("---")
 
-            tab1, tab2, tab3, tab4 = st.tabs(["📋 All Results", "🏆 Top 10", "📊 Charts", "📥 Export"])
+            tab1, tab2, tab3, tab4 = st.tabs(
+                ["📋 All Results", "🏆 Top 10 Picks", "📊 Charts", "📥 Export"])
 
             with tab1:
                 cols = [
@@ -455,79 +462,103 @@ def main():
                     "1M Return %", "6M Return %", "Momentum Gap",
                     "RSI (14)", "OBV Slope", "Vol Ratio", "% from 52W High",
                 ]
-                styled = results[cols].style\
-                    .background_gradient(subset=["Momentum Gap"], cmap="Greens")\
-                    .background_gradient(subset=["RSI (14)"], cmap="Blues")\
-                    .background_gradient(subset=["OBV Slope"], cmap="Purples")\
+                styled = (
+                    results[cols].style
+                    .background_gradient(subset=["Momentum Gap"], cmap="Greens")
+                    .background_gradient(subset=["RSI (14)"],     cmap="Blues")
+                    .background_gradient(subset=["OBV Slope"],    cmap="Purples")
                     .format({
-                        "LTP": "₹{:.2f}", "200 DMA": "₹{:.2f}",
-                        "% vs 200 DMA": "{:+.2f}%", "1M Return %": "{:+.2f}%",
-                        "6M Return %": "{:+.2f}%", "Momentum Gap": "{:+.2f}%",
-                        "RSI (14)": "{:.1f}", "OBV Slope": "{:,.0f}",
-                        "Vol Ratio": "{:.2f}×", "% from 52W High": "{:+.2f}%"
+                        "LTP":             "₹{:.2f}",
+                        "200 DMA":         "₹{:.2f}",
+                        "% vs 200 DMA":    "{:+.2f}%",
+                        "1M Return %":     "{:+.2f}%",
+                        "6M Return %":     "{:+.2f}%",
+                        "Momentum Gap":    "{:+.2f}%",
+                        "RSI (14)":        "{:.1f}",
+                        "OBV Slope":       "{:,.0f}",
+                        "Vol Ratio":       "{:.2f}×",
+                        "% from 52W High": "{:+.2f}%",
                     })
+                )
                 st.dataframe(styled, use_container_width=True, height=480)
 
             with tab2:
-                st.markdown("### 🏆 Top 10 by Momentum Gap")
+                st.markdown("### 🏆 Top 10 — Ranked by Momentum Gap")
                 top10 = results.head(10)
                 rows_html = ""
                 for i, (_, row) in enumerate(top10.iterrows(), 1):
-                    gap = row["Momentum Gap"]
+                    gap   = row["Momentum Gap"]
                     color = "#4ade80" if gap > 10 else "#facc15" if gap > 5 else "#e2e8f0"
                     pct52 = row["% from 52W High"]
-                    badge52 = f'<span class="badge-green">{pct52:+.1f}%</span>' if pct52 > -10 else f'<span style="color:#f87171">{pct52:+.1f}%</span>'
+                    b52   = (
+                        f'<span class="badge-green">{pct52:+.1f}%</span>'
+                        if pct52 > -10
+                        else f'<span style="color:#f87171">{pct52:+.1f}%</span>'
+                    )
                     rows_html += f"""
                     <tr>
                       <td><b>#{i}</b></td>
                       <td><b>{row['Symbol']}</b></td>
                       <td>₹{row['LTP']:.2f}</td>
                       <td><span class="badge-green">{row['% vs 200 DMA']:+.1f}%</span></td>
-                      <td style="color:{color}">{row['1M Return %']:+.1f}%</td>
+                      <td style='color:{color}'>{row['1M Return %']:+.1f}%</td>
                       <td>{row['6M Return %']:+.1f}%</td>
-                      <td style="color:{color};font-weight:700">{gap:+.1f}%</td>
+                      <td style='color:{color}; font-weight:700'>{gap:+.1f}%</td>
                       <td><span class="badge-blue">{row['RSI (14)']:.1f}</span></td>
                       <td><span class="badge-gold">{row['OBV Slope']:,.0f}</span></td>
                       <td>{row['Vol Ratio']:.2f}×</td>
-                      <td>{badge52}</td>
+                      <td>{b52}</td>
                     </tr>"""
+
                 st.markdown(f"""
                 <table class="results-table">
-                  <thead><tr><th>#</th><th>Symbol</th><th>LTP</th><th>vs 200DMA</th><th>1M Ret</th><th>6M Ret</th><th>Mom Gap</th><th>RSI</th><th>OBV Slope</th><th>Vol Ratio</th><th>vs 52W High</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>#</th><th>Symbol</th><th>LTP</th><th>vs 200DMA</th>
+                      <th>1M Ret</th><th>6M Ret</th><th>Mom Gap ↑</th>
+                      <th>RSI</th><th>OBV Slope</th><th>Vol Ratio</th><th>vs 52W High</th>
+                    </tr>
+                  </thead>
                   <tbody>{rows_html}</tbody>
                 </table>
                 """, unsafe_allow_html=True)
 
                 st.markdown("""
-                <div class="info-box" style="margin-top:20px">
-                  🎯 <b>Setup Idea</b><br>
-                  • Entry: Pullback to 20 EMA + volume<br>
-                  • Stop: Below swing low / 20 EMA<br>
-                  • Targets: 1.5× risk (50%), trail rest<br>
-                  ⚠️ Always check <a href="https://www.nseindia.com/regulations/member-regulation-fo-participants-ban" target="_blank" style="color:#818cf8">NSE F&amp;O Ban List</a> before trading futures.
+                <div class="info-box" style='margin-top:20px'>
+                  🎯 <b>Trade Setup for Next Session</b><br>
+                  &nbsp;&nbsp;📌 <b>Entry:</b> Wait for pullback to 20 EMA — enter on bounce with volume<br>
+                  &nbsp;&nbsp;🛑 <b>Stop Loss:</b> Below recent swing low or 20 EMA<br>
+                  &nbsp;&nbsp;💰 <b>Target 1 (50% qty):</b> 1.5× risk — trail to breakeven<br>
+                  &nbsp;&nbsp;🚀 <b>Target 2:</b> Trail below successive 5-day lows<br>
+                  ⚠️ <b>Ban check:</b> Verify stock not in <a href="https://www.nseindia.com/regulations/member-regulation-fo-participants-ban" target="_blank" style="color:#818cf8">NSE F&amp;O ban list</a>
                 </div>
                 """, unsafe_allow_html=True)
 
             with tab3:
-                c1, c2 = st.columns(2)
-                with c1: st.bar_chart(results.head(15)[["Symbol", "Momentum Gap"]].set_index("Symbol"))
-                with c2: st.bar_chart(results.head(15)[["Symbol", "RSI (14)"]].set_index("Symbol"))
+                c_l, c_r = st.columns(2)
+                with c_l:
+                    st.markdown("**Momentum Gap — Top 15**")
+                    st.bar_chart(results[["Symbol","Momentum Gap"]].head(15).set_index("Symbol"))
+                with c_r:
+                    st.markdown("**RSI Values — Top 15**")
+                    st.bar_chart(results[["Symbol","RSI (14)"]].head(15).set_index("Symbol"))
 
             with tab4:
+                st.markdown("### 📥 Export Results")
                 today_str = date.today().strftime("%Y-%m-%d")
                 csv = results.to_csv(index=True).encode("utf-8")
                 st.download_button(
-                    "⬇️ Download Results CSV",
-                    csv,
-                    f"fo_momentum_{today_str}.csv",
-                    "text/csv",
-                    use_container_width=True
+                    "⬇️ Download Full Results CSV",
+                    data=csv,
+                    file_name=f"fo_momentum_{today_str}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
                 )
-                st.markdown("#### Copy symbols:")
-                st.code(", ".join(results["Symbol"].tolist()))
+                st.markdown("#### Symbol List (copy to broker):")
+                st.code(", ".join(results["Symbol"].tolist()), language="text")
 
         if st.session_state.errors:
-            with st.expander(f"⚠️ {len(st.session_state.errors)} errors"):
+            with st.expander(f"⚠️ {len(st.session_state.errors)} symbols had errors"):
                 for e in st.session_state.errors[:30]:
                     st.text(e)
 
