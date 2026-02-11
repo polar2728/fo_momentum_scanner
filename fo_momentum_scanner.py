@@ -100,59 +100,45 @@ for key, default in {
 # ─────────────────────────────────────────────
 # FETCH EXACT NSE F&O SYMBOLS FROM BHAVCOPY ZIP
 # ─────────────────────────────────────────────
-@st.cache_data(ttl=3600 * 4, show_spinner=False)  # 4 hours - easier to force refresh
-def get_nse_fo_symbols():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-    }
-    s = requests.Session()
-    s.headers.update(headers)
-
-    # Prime the session - critical for NSE archives
-    try:
-        s.get("https://www.nseindia.com", timeout=8)
-        st.toast("NSE homepage visited → session primed")
-    except Exception as e:
-        st.toast(f"Session priming failed: {str(e)}")
-
-    today = datetime.date.today()
-    symbols = set()
-
-    # Try last 10 days
-    for i in range(10):
-        d = today - datetime.timedelta(days=i)
-        date_str = d.strftime("%Y%m%d")
-        url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
-
+def download_fo():
+    s = get_nse_session()
+    for i in range(7):
+        d = date.today() - timedelta(days=i)
+        url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{d.strftime('%Y%m%d')}_F_0000.csv.zip"
         try:
-            st.toast(f"Trying {d.strftime('%d-%b-%Y')} → {url}")
-            r = s.get(url, timeout=15)
-            st.toast(f"Status for {date_str}: {r.status_code}")
+            r = s.get(url, timeout=10)
             if r.status_code == 200:
-                with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-                    csv_file = z.namelist()[0]
-                    with z.open(csv_file) as f:
-                        df = pd.read_csv(f, low_memory=False)
-                        sym_col = next((c for c in df.columns if 'symbol' in c.lower()), 'SYMBOL')
-                        if sym_col in df.columns:
-                            new_syms = df[sym_col].dropna().str.strip().str.upper().unique().tolist()
-                            symbols.update(new_syms)
-                            st.success(f"Loaded {len(new_syms)} symbols from {d.strftime('%d-%b')}")
-                            return sorted(list(symbols))
-        except Exception as e:
-            st.toast(f"Error on {date_str}: {str(e)[:60]}...")
+                with zipfile.ZipFile(BytesIO(r.content)) as z:
+                    print(f"✅ F&O bhavcopy loaded for {d}")
+                    return pd.read_csv(z.open(z.namelist()[0]))
+        except Exception:
             continue
+    print("⚠️ No F&O bhavcopy found")
+    return pd.DataFrame()
 
-    # Final fallback if all failed
-    st.warning("All bhavcopy attempts failed. Using fallback ~50 F&O symbols.")
-    fallback = [
-        "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "SBIN", "BHARTIARTL", "ITC",
-        "LT", "KOTAKBANK", "AXISBANK", "BAJFINANCE", "TATAMOTORS", "SUNPHARMA", "TITAN",
-        "MARUTI", "ULTRACEMCO", "ADANIENT", "ZOMATO", "HAL", "BEL", "IRFC", "PFC", "RECLTD", "SAIL"
-    ]
-    return sorted(fallback)
+# ==========================================================
+# BUILD TICKER UNIVERSE
+# ==========================================================
+def build_ticker_universe():
+    print("⏳ Building ticker universe...")
+    if not USE_ALL_FNO:
+        tickers = sorted(set(CORE_TICKERS))
+    else:
+        fo = download_fo()
+        if fo.empty or "FinInstrmTp" not in fo.columns or "TckrSymb" not in fo.columns:
+            print("⚠️ Fallback to core tickers")
+            tickers = sorted(set(CORE_TICKERS))
+        else:
+            banned = fetch_ban_list()
+            stocks = fo[fo["FinInstrmTp"] == "STF"]["TckrSymb"].str.upper().unique()
+            valid = set(stocks) - banned
+            tickers = sorted(valid | INDEX_SYMBOLS)
+            print(f"✅ Loaded {len(tickers)} F&O symbols")
+    symbol_map = {
+        t: "^NSEI" if t == "NIFTY" else "^NSEBANK" if t == "BANKNIFTY" else f"{t}.NS"
+        for t in tickers
+    }
+    return symbol_map
 
 ALL_FO_SYMBOLS = get_nse_fo_symbols()
 
