@@ -85,6 +85,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+USE_ALL_FNO = True
+
 # ─────────────────────────────────────────────
 # SESSION STATE
 # ─────────────────────────────────────────────
