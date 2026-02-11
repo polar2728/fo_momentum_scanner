@@ -140,7 +140,7 @@ def build_ticker_universe():
     }
     return symbol_map
 
-ALL_FO_SYMBOLS = get_nse_fo_symbols()
+ALL_FO_SYMBOLS = build_ticker_universe()
 
 def to_yf(sym: str) -> str:
     return sym + ".NS"
