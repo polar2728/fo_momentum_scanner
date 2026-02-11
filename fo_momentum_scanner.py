@@ -86,7 +86,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 USE_ALL_FNO = True
-
+CORE_TICKERS = [
+    "NIFTY", "BANKNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN",
+    "INFY", "TCS", "ITC", "HINDUNILVR", "BHARTIARTL", "LT", "KOTAKBANK",
+    "TATASTEEL", "COALINDIA", "ASIANPAINT", "MARUTI", "DRREDDY",
+    "TATAPOWER", "INDIGO", "ULTRACEMCO", "ONGC", "BAJFINANCE"
+]
 # ─────────────────────────────────────────────
 # SESSION STATE
 # ─────────────────────────────────────────────
