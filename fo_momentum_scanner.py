@@ -38,44 +38,78 @@ def get_session():
 
 @st.cache_data(ttl=86400)
 def get_fo_universe():
-    session = get_session()
-    url = "https://archives.nseindia.com/content/fo/fo_mktlots.csv"
+    """
+    Cloud-safe F&O universe builder.
+    Uses NSE equity master + F&O lot file fallback.
+    """
+
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0"
+    })
 
     try:
-        r = session.get(url, timeout=10)
-        df = pd.read_csv(io.StringIO(r.text))
+        # Step 1: Get all NSE equity symbols (very stable endpoint)
+        eq_url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+        eq_r = session.get(eq_url, timeout=10)
 
-        df.columns = df.columns.str.strip().str.upper()
+        if eq_r.status_code != 200:
+            return [], {}
 
-        symbol_col = next((c for c in df.columns if "SYMB" in c), None)
-        lot_col = next((c for c in df.columns if "LOT" in c), None)
+        eq_df = pd.read_csv(io.StringIO(eq_r.text))
+        eq_df.columns = eq_df.columns.str.strip().str.upper()
 
+        symbol_col = next((c for c in eq_df.columns if "SYMBOL" in c), None)
         if symbol_col is None:
             return [], {}
 
-        symbols = (
-            df[symbol_col]
-            .astype(str)
-            .str.strip()
-            .str.upper()
-            .unique()
-            .tolist()
-        )
+        all_symbols = eq_df[symbol_col].astype(str).str.strip().str.upper().tolist()
 
-        exclude = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
-        symbols = [s for s in symbols if s not in exclude]
+        # Step 2: Try fetching F&O lot file
+        lot_url = "https://archives.nseindia.com/content/fo/fo_mktlots.csv"
+        lot_r = session.get(lot_url, timeout=10)
 
         lot_map = {}
-        if lot_col:
-            for _, row in df.iterrows():
-                sym = str(row[symbol_col]).strip().upper()
-                if sym not in exclude:
-                    lot_map[sym] = int(row[lot_col])
+        fo_symbols = []
 
-        return sorted(symbols), lot_map
+        if lot_r.status_code == 200:
+            lot_df = pd.read_csv(io.StringIO(lot_r.text))
+            lot_df.columns = lot_df.columns.str.strip().str.upper()
 
-    except:
+            sym_col = next((c for c in lot_df.columns if "SYMB" in c), None)
+            lot_col = next((c for c in lot_df.columns if "LOT" in c), None)
+
+            if sym_col:
+                fo_symbols = (
+                    lot_df[sym_col]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .unique()
+                    .tolist()
+                )
+
+                if lot_col:
+                    for _, row in lot_df.iterrows():
+                        sym = str(row[sym_col]).strip().upper()
+                        try:
+                            lot_map[sym] = int(row[lot_col])
+                        except:
+                            continue
+
+        # If lot file blocked → fallback to top 150 liquid stocks
+        if not fo_symbols:
+            fo_symbols = all_symbols[:150]
+
+        # Remove indices
+        exclude = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
+        fo_symbols = [s for s in fo_symbols if s not in exclude]
+
+        return sorted(fo_symbols), lot_map
+
+    except Exception:
         return [], {}
+
 
 # ─────────────────────────────────────────────
 # 2️⃣ PRICE FETCH (NSE HISTORICAL API)
