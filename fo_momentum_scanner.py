@@ -576,7 +576,7 @@ def main():
                 if not rel_sample.empty:
                     st.markdown("**Sample rows for RELIANCE:**")
                     st.dataframe(rel_sample[["TckrSymb", "XpryDt", "OpnIntrst"] + 
-                                           ([" OptnTp"] if "OptnTp" in rel_sample.columns else [])],
+                                           (["OptnTp"] if "OptnTp" in rel_sample.columns else [])],
                                use_container_width=True)
 
         # Step 2: Clear yfinance cache and run scan
