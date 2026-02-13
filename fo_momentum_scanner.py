@@ -93,6 +93,11 @@ st.markdown("""
   }
 
   .scan-label { font-size: 0.82rem; color: #64748b; margin-bottom: 2px; }
+  
+  .debug-box {
+    background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+    padding: 12px; font-size: 0.75rem; color: #94a3b8; font-family: monospace;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,6 +111,7 @@ for key, default in {
     "errors": [],
     "oi_data": None,
     "bhavcopy_dates": [],
+    "debug_info": [],
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -187,7 +193,6 @@ def download_fo_bhavcopy(trading_date: date) -> pd.DataFrame:
         if r.status_code == 200:
             with zipfile.ZipFile(BytesIO(r.content)) as z:
                 df = pd.read_csv(z.open(z.namelist()[0]))
-                df["TradDt"] = pd.to_datetime(df["TradDt"])
                 return df
     except Exception:
         pass
@@ -200,7 +205,7 @@ def download_last_n_bhavcopy(n_days: int = 5) -> dict:
     Returns dict: {date: DataFrame}
     """
     bhavcopy_data = {}
-    for i in range(n_days * 2):  # go back further to skip weekends
+    for i in range(n_days * 3):  # go back further to skip weekends/holidays
         d = date.today() - timedelta(days=i)
         if d.weekday() >= 5:  # skip Sat/Sun
             continue
@@ -219,27 +224,49 @@ def extract_oi_timeseries(bhavcopy_data: dict, symbol: str) -> pd.DataFrame:
     Uses nearest expiry futures contract.
     """
     records = []
+    
     for dt, df in sorted(bhavcopy_data.items()):
-        # Filter for stock futures (FUTSTK) matching symbol
-        fut = df[
-            (df["TckrSymb"] == symbol) &
-            (df["FinInstrmTp"] == "STO") &
-            (df["OpnIntrst"].notna())
-        ].copy()
-
+        # The NSE F&O bhavcopy has these key columns:
+        # TckrSymb = ticker symbol
+        # FinInstrmTp = instrument type (we want futures, usually blank or "XX" for futures)
+        # OptnTp = option type (should be blank/XX for futures)
+        # XpryDt = expiry date
+        # OpnIntrst = open interest
+        
+        # Filter for this symbol's futures (not options)
+        # Futures have blank/XX in OptnTp column
+        fut = df[df["TckrSymb"] == symbol].copy()
+        
         if fut.empty:
             continue
-
+            
+        # Remove options - keep only futures (OptnTp should be blank, 'XX', or NaN)
+        if "OptnTp" in fut.columns:
+            fut = fut[
+                (fut["OptnTp"].isna()) | 
+                (fut["OptnTp"] == "XX") | 
+                (fut["OptnTp"] == "")
+            ].copy()
+        
+        if fut.empty:
+            continue
+        
+        # Ensure we have OI data
+        if "OpnIntrst" not in fut.columns or fut["OpnIntrst"].isna().all():
+            continue
+            
         # Pick nearest expiry
         fut["XpryDt"] = pd.to_datetime(fut["XpryDt"])
         fut = fut[fut["XpryDt"] >= pd.Timestamp(dt)]
+        
         if fut.empty:
             continue
 
         nearest = fut.sort_values("XpryDt").iloc[0]
+        
         records.append({
             "date": dt,
-            "OI": int(nearest["OpnIntrst"]),
+            "OI": int(nearest["OpnIntrst"]) if pd.notna(nearest["OpnIntrst"]) else 0,
         })
 
     if not records:
@@ -332,7 +359,7 @@ def scan_single(symbol: str, rsi_low: float, rsi_high: float,
         ma50   = float(close.rolling(50).mean().iloc[-1])
         hi_52w = float(close.rolling(252).max().iloc[-1])
 
-        oi_change_pct = round((oi_vals[-1] / oi_vals[0] - 1) * 100, 2)
+        oi_change_pct = round((oi_vals[-1] / oi_vals[0] - 1) * 100, 2) if oi_vals[0] > 0 else 0
         latest_oi     = int(oi_vals[-1])
 
         return {
@@ -505,6 +532,7 @@ def main():
             st.stop()
 
         st.session_state.scan_running = True
+        st.session_state.debug_info = []
 
         # Step 1: Download bhavcopy
         with st.spinner("📥 Downloading NSE F&O bhavcopy (last 5 trading days)..."):
@@ -525,6 +553,31 @@ def main():
         st.session_state.bhavcopy_dates = list(bhavcopy_data.keys())
         st.success(f"✅ Loaded bhavcopy for {len(bhavcopy_data)} trading days: "
                    f"{', '.join(d.strftime('%d-%b') for d in sorted(bhavcopy_data.keys(), reverse=True))}")
+
+        # Debug: show sample data from first bhavcopy
+        first_date = sorted(bhavcopy_data.keys())[0]
+        sample_df = bhavcopy_data[first_date]
+        
+        with st.expander("🔍 Debug — Sample Bhavcopy Data (click to expand)"):
+            st.markdown(f"**Columns in bhavcopy:** {', '.join(sample_df.columns.tolist())}")
+            st.markdown(f"**Total rows:** {len(sample_df):,}")
+            
+            # Show unique values for key columns
+            if "TckrSymb" in sample_df.columns:
+                unique_symbols = sample_df["TckrSymb"].unique()[:20]
+                st.markdown(f"**Sample symbols (first 20):** {', '.join(unique_symbols)}")
+            
+            if "OptnTp" in sample_df.columns:
+                st.markdown(f"**Unique OptnTp values:** {sample_df['OptnTp'].unique().tolist()}")
+            
+            # Show a few rows for RELIANCE as example
+            if "TckrSymb" in sample_df.columns:
+                rel_sample = sample_df[sample_df["TckrSymb"] == "RELIANCE"].head(3)
+                if not rel_sample.empty:
+                    st.markdown("**Sample rows for RELIANCE:**")
+                    st.dataframe(rel_sample[["TckrSymb", "XpryDt", "OpnIntrst"] + 
+                                           ([" OptnTp"] if "OptnTp" in rel_sample.columns else [])],
+                               use_container_width=True)
 
         # Step 2: Clear yfinance cache and run scan
         fetch_ohlcv.clear()
